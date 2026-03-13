@@ -1,4 +1,4 @@
-import express from 'express';
+import express, { Router } from 'express';
 import { config } from './config.js';
 import matchesRouter from './routes/matches.js';
 import metadataRouter from './routes/metadata.js';
@@ -6,10 +6,16 @@ import metadataRouter from './routes/metadata.js';
 const app = express();
 app.use(express.json());
 
-// ── Provider manifest ─────────────────────────────────────────────────────────
-// Plex fetches this to learn the provider's capabilities and endpoints.
+// ── /movie router ─────────────────────────────────────────────────────────────
+// All provider endpoints are mounted at /movie, mirroring the reference impl
+// which mounts its TV provider at /tv. Plex derives feature URLs relative to
+// the registered base path, so the user registers:
+//   http://stash-plex-provider:3000/movie
 
-app.get('/', (_req, res) => {
+const movieRouter = Router();
+
+// Manifest — Plex fetches GET /movie to discover capabilities
+movieRouter.get('/', (_req, res) => {
   const { identifier, title, version } = config.provider;
   res.json({
     MediaProvider: {
@@ -31,12 +37,12 @@ app.get('/', (_req, res) => {
   });
 });
 
-// ── Routes ────────────────────────────────────────────────────────────────────
+movieRouter.post('/library/metadata/matches', matchesRouter);
+movieRouter.use('/library/metadata', metadataRouter);
 
-app.post('/library/metadata/matches', matchesRouter);
-app.use('/library/metadata', metadataRouter);
+app.use('/movie', movieRouter);
 
-// ── Health check ──────────────────────────────────────────────────────────────
+// ── Health check (root, outside /movie) ───────────────────────────────────────
 
 app.get('/health', (_req, res) => {
   res.json({ status: 'ok', identifier: config.provider.identifier });
@@ -47,6 +53,7 @@ app.get('/health', (_req, res) => {
 const port = config.provider.port;
 app.listen(port, () => {
   console.log(`[stash-plex-provider] listening on http://localhost:${port}`);
+  console.log(`[stash-plex-provider] register URL: http://localhost:${port}/movie`);
   console.log(`[stash-plex-provider] identifier: ${config.provider.identifier}`);
   console.log(`[stash-plex-provider] stash: ${config.stash.host}:${config.stash.port}`);
   console.log(`[stash-plex-provider] addPlexUrl: ${config.addPlexUrl}`);
