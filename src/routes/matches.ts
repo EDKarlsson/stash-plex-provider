@@ -9,12 +9,18 @@ const router = Router();
 // Plex sends a JSON body describing what it wants to match. We search Stash and
 // return candidate scenes. The ratingKey we return here is the Stash scene ID.
 router.post('/', async (req: Request, res: Response) => {
-  const { title, year, type, guid } = req.body as {
+  const { title, year, type, guid, filename } = req.body as {
     title?: string;
     year?: number;
     type?: number;
     guid?: string;
+    filename?: string;
   };
+
+  // Log full request body at debug level for path-alignment verification
+  if (config.logLevel === 'debug') {
+    console.log('[matches] request body:', JSON.stringify(req.body));
+  }
 
   // Only handle movie type (1)
   if (type !== undefined && type !== 1) {
@@ -22,15 +28,25 @@ router.post('/', async (req: Request, res: Response) => {
   }
 
   let scenes: StashSceneSummary[] = [];
+  let hint: string | undefined;
 
-  // Strategy 1: if Plex gives us a filename hint buried in the guid or title,
-  // use the basename as the path search term
-  const hint = extractFilenameHint(guid, title);
-  if (hint) {
+  // Strategy 1: use filename from Plex (full path Plex sees on disk).
+  // Extract the basename and search Stash by path — this is the most reliable
+  // signal because it bypasses whatever mangling the scanner does to titles.
+  if (filename) {
+    hint = path.basename(filename);
     scenes = await findScenesByPath(hint);
   }
 
-  // Strategy 2: fallback to title search
+  // Strategy 2: fall back to guid/title hint if filename was absent or found nothing
+  if (scenes.length === 0) {
+    hint = extractFilenameHint(guid, title);
+    if (hint) {
+      scenes = await findScenesByPath(hint);
+    }
+  }
+
+  // Strategy 3: fallback to title search
   if (scenes.length === 0 && title) {
     scenes = await findScenesByTitle(title);
   }
