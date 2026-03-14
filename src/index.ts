@@ -37,7 +37,7 @@ movieRouter.get('/', (_req, res) => {
   });
 });
 
-movieRouter.post('/library/metadata/matches', matchesRouter);
+movieRouter.use('/library/metadata/matches', matchesRouter);
 movieRouter.use('/library/metadata', metadataRouter);
 
 app.use('/movie', movieRouter);
